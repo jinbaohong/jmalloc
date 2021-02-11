@@ -63,6 +63,7 @@ int heap_extend()
 	BLK_SET_HEAD(last_block, 2*sizeof(size_j), O_ALLOCATED);
 	BLK_SET_FOOT(last_block, 2*sizeof(size_j), O_ALLOCATED);
 	heap_end = last_block + 2*sizeof(size_j);
+	printf("heap_end=%p, sbrk(0)=%p\n", heap_end, sbrk(0));
 	return 0;
 }
 
@@ -101,7 +102,11 @@ void *jmalloc(size_j size)
 
 void jfree(void *ptr)
 {
-	;
+	void *blk_ptr;
+
+	blk_ptr = ptr - sizeof(size_j);
+	BLK_SET_HEAD(blk_ptr, (*BLK_GET_HEAD_PTR(blk_ptr) & ~(0x7)), 0);
+	BLK_SET_FOOT(blk_ptr, (*BLK_GET_HEAD_PTR(blk_ptr) & ~(0x7)), 0);
 }
 
 int main(int ac, char const *av[])
