@@ -1,0 +1,2 @@
+# README
+./a.out
