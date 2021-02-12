@@ -5,6 +5,9 @@
 #define CHUNK_SIZE 4096
 #define O_ALLOCATED 1
 
+typedef unsigned int size_j;
+
+
 #define BLK_GET_HEAD_PTR(ptr) ((size_j*)(ptr))
 #define BLK_GET_SIZE(ptr) ((*BLK_GET_HEAD_PTR(ptr) & ~(0x7)) - 2*sizeof(size_j))
 #define BLK_GET_FOOT_PTR(ptr) ((size_j*)((ptr) + sizeof(size_j) + BLK_GET_SIZE(ptr)))
@@ -15,7 +18,6 @@
 #define BLK_SET_HEAD(ptr, blk_siz, flag) *BLK_GET_HEAD_PTR(ptr) = (blk_siz) | flag
 #define BLK_SET_FOOT(ptr, blk_siz, flag) *BLK_GET_FOOT_PTR(ptr) = (blk_siz) | flag
 
-typedef unsigned int size_j;
 
 static void* heap_start;
 static void* heap_end;
@@ -105,30 +107,48 @@ void *jmalloc(size_j size)
 void jfree(void *ptr)
 {
     void *blk_ptr;
-    size_j val;
+    size_j val, next_alloc, prev_alloc;
+    
     blk_ptr = ptr - sizeof(size_j);
+    next_alloc = BLK_IS_ALLOCATED(BLK_GET_NEXT_BLK(blk_ptr));
+    prev_alloc = BLK_IS_ALLOCATED(BLK_GET_PREV_BLK(blk_ptr));
+    val = *BLK_GET_HEAD_PTR(blk_ptr) & ~0x7;
 
-    if (!BLK_IS_ALLOCATED(BLK_GET_NEXT_BLK(blk_ptr))) // next block is free too.
+    if (prev_alloc && !next_alloc) // only next block is free.
     {
-        printf("jfree: next block is free\n");
-        val = *BLK_GET_HEAD_PTR(BLK_GET_NEXT_BLK(blk_ptr)) + (*BLK_GET_HEAD_PTR(blk_ptr) & ~(0x7));
+        printf("jfree: only next block is free\n");
+        val += *BLK_GET_HEAD_PTR(BLK_GET_NEXT_BLK(blk_ptr));
         BLK_SET_HEAD(blk_ptr, val, 0);
         BLK_SET_FOOT(blk_ptr, val, 0);
     }
 
-    else if (!BLK_IS_ALLOCATED(BLK_GET_PREV_BLK(blk_ptr))) // prev block is free too.
+    else if (!prev_alloc && next_alloc) // only prev block is free.
     {
-        printf("jfree: prev block is free\n");
-        val = *BLK_GET_HEAD_PTR(BLK_GET_PREV_BLK(blk_ptr)) + (*BLK_GET_HEAD_PTR(blk_ptr) & ~(0x7));
+        printf("jfree: only prev block is free\n");
+        val += *BLK_GET_HEAD_PTR(BLK_GET_PREV_BLK(blk_ptr));
+        // BLK_SET_FOOT(blk_ptr, val, 0);
+        // BLK_SET_HEAD(BLK_GET_HEAD_PTR(BLK_GET_PREV_BLK(blk_ptr)), val, 0);
+        blk_ptr = BLK_GET_HEAD_PTR(BLK_GET_PREV_BLK(blk_ptr));
+        BLK_SET_HEAD(blk_ptr, val, 0);
         BLK_SET_FOOT(blk_ptr, val, 0);
-        BLK_SET_HEAD(BLK_GET_HEAD_PTR(BLK_GET_PREV_BLK(blk_ptr)), val, 0);
+
     }
 
-    else // need no merge.
+    else if (prev_alloc && next_alloc) // need no merge.
     {
         printf("jfree: no need merge\n");
-        BLK_SET_HEAD(blk_ptr, (*BLK_GET_HEAD_PTR(blk_ptr) & ~(0x7)), 0);
-        BLK_SET_FOOT(blk_ptr, (*BLK_GET_HEAD_PTR(blk_ptr) & ~(0x7)), 0);
+        BLK_SET_HEAD(blk_ptr, val, 0);
+        BLK_SET_FOOT(blk_ptr, val, 0);
+    }
+
+    else
+    {
+        printf("jfree: both need merge\n");
+        val += (*BLK_GET_HEAD_PTR(BLK_GET_PREV_BLK(blk_ptr)) +
+                *BLK_GET_HEAD_PTR(BLK_GET_NEXT_BLK(blk_ptr)));
+        blk_ptr = BLK_GET_HEAD_PTR(BLK_GET_PREV_BLK(blk_ptr));
+        BLK_SET_HEAD(blk_ptr, val, 0);
+        BLK_SET_FOOT(blk_ptr, val, 0);
     }
 }
 
@@ -159,20 +179,28 @@ int main(int ac, char const *av[])
     printf("**********************************************************************\n");
     printf("**********************************************************************\n");
     heap_init();
-    int *i, *j;
+    int *i, *j, *k;
     i = jmalloc(8*sizeof(int));
     printf("heap_start at %p\n", heap_start);
     printf("heap_end   at %p\n", heap_end);
     printf("last_block at %p\n", last_block);
     printf("Allocate i at %p\n", i);
-    jcheck();
-    jfree(i);
-    jcheck();
-    j = jmalloc(8*sizeof(long));
+    j = jmalloc(8*sizeof(int));
     printf("heap_start at %p\n", heap_start);
     printf("heap_end   at %p\n", heap_end);
     printf("last_block at %p\n", last_block);
-    printf("Allocate i at %p\n", j);
+    printf("Allocate j at %p\n", j);
+    k = jmalloc(8*sizeof(int));
+    printf("heap_start at %p\n", heap_start);
+    printf("heap_end   at %p\n", heap_end);
+    printf("last_block at %p\n", last_block);
+    printf("Allocate k at %p\n", k);
+    jcheck();
+    jfree(i);
+    jcheck();
+    jfree(k);
+    jcheck();
+    jfree(j);
     jcheck();
 
     return 0;
